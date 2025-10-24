@@ -935,73 +935,38 @@ def show_media_downloader():
 
         # Download button - disabled during download
         download_disabled = st.session_state.download_in_progress
-        button_text = "⏳ Download in Progress..." if download_disabled else "🚀 Download"
-        
-        # Quick download with smart defaults
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            if st.button(button_text, use_container_width=True, key="media_download_btn", disabled=download_disabled):
-                if not url:
-                    st.error("❌ Please enter a media URL")
-                else:
-                    # Auto-detect platform if not already done
-                    if not platform or platform == "Unknown":
-                        platform = detect_platform(url)
-                        if platform == "Unknown":
-                            st.error("❌ Platform not supported or URL invalid")
-                            st.stop()
-                    
-                    # Check if it's a playlist
-                    is_playlist = detect_playlist(url)
-                    
-                    # Set smart defaults and go straight to download
-                    smart_defaults = {
-                        "url": url,
-                        "platform": platform,
-                        "is_playlist": is_playlist,
-                        "content_format": "🎵 Audio Only",  # Default to MP3 audio
-                        "quality": "Best",  # Best quality
-                        "audio_format": "mp3",  # MP3 for audio
-                        "output_dir": str(Path.home() / "Downloads"),  # Downloads folder
-                        "subtitle_check": False,  # No subtitles by default
-                        "include_metadata": platform != "🎥 YouTube",  # Metadata for social media only
-                        "ignore_errors": is_playlist  # Skip errors for playlists
-                    }
-                    
-                    st.session_state.media_config = smart_defaults
-                    st.session_state.media_config_step = 5  # Go straight to download
-                    st.rerun()
-        
-        with col2:
-            if st.button("⚙️ Customize", use_container_width=True, key="customize_download_btn", disabled=download_disabled):
-                if not url:
-                    st.error("❌ Please enter a media URL")
-                else:
-                    # Auto-detect platform if not already done
-                    if not platform or platform == "Unknown":
-                        platform = detect_platform(url)
-                        if platform == "Unknown":
-                            st.error("❌ Platform not supported or URL invalid")
-                            st.stop()
-                    
-                    # Check if it's a playlist
-                    is_playlist = detect_playlist(url)
-                    
-                    # Start custom configuration flow
-                    st.session_state.media_config = {"url": url, "platform": platform, "is_playlist": is_playlist}
-                    st.session_state.media_config_step = 1
+        button_text = "⏳ Download in Progress..." if download_disabled else "⚙️ Configure Download"
+
+        # Force users to configure before downloading
+        if st.button(button_text, use_container_width=True, key="media_download_btn", disabled=download_disabled):
+            if not url:
+                st.error("❌ Please enter a media URL")
+            else:
+                # Auto-detect platform if not already done
+                if not platform or platform == "Unknown":
+                    platform = detect_platform(url)
+                    if platform == "Unknown":
+                        st.error("❌ Platform not supported or URL invalid")
+                        st.stop()
+
+                # Check if it's a playlist
+                is_playlist = detect_playlist(url)
+
+                # Start custom configuration flow
+                st.session_state.media_config = {"url": url, "platform": platform, "is_playlist": is_playlist}
+                st.session_state.media_config_step = 1
 
         # Modal flow for configuration
-        @st.dialog("🎵 Quick Setup")
+        @st.dialog("⚙️ Download Configuration")
         def show_content_type_modal():
-            st.write("**Quick options for your download:**")
-            
-            # Default to audio, but allow video choice
+            st.write("**Choose your download options:**")
+
+            # Let user choose video or audio
             want_video = st.radio(
                 "Content type:",
-                ["🎵 Audio Only (MP3) - Recommended", "🎬 Video (MP4)"],
+                ["🎬 Video (MP4)", "🎵 Audio Only (MP3)"],
                 key="modal_want_video",
-                index=0  # Default to audio
+                index=0  # Default to video
             )
             
             # Show output directory with default
