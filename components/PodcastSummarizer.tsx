@@ -13,6 +13,8 @@ interface Topic {
   title: string;
   timestamp: number;
   description: string;
+  summary?: string;
+  keyPoints?: string[];
 }
 
 interface SummaryProgress {
@@ -31,7 +33,7 @@ export default function PodcastSummarizer() {
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState<SummaryProgress | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
-  const [selectedPanel, setSelectedPanel] = useState<'summary' | 'transcript'>('summary');
+  const [selectedPanel, setSelectedPanel] = useState<'summary' | 'transcript' | 'chapters'>('summary');
   const [autoScroll, setAutoScroll] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedState, setCopiedState] = useState<'summary' | 'transcript' | null>(null);
@@ -366,81 +368,11 @@ export default function PodcastSummarizer() {
   // Results view with topic bookmarks
   return (
     <div className="w-full min-h-screen">
-      {/* Three-column layout: Chapters | Video | Summary/Transcript */}
-      <div className="grid grid-cols-[240px_640px_1fr] gap-6 pb-6 items-start">
+      {/* Two-column layout: Video | Summary/Transcript/Chapters */}
+      <div className="grid grid-cols-[640px_1fr] gap-6 pb-6 items-center max-w-7xl mx-auto">
 
-        {/* Left - Chapters Sidebar */}
-        <div className="bg-black border border-white/10 rounded-2xl overflow-hidden max-h-[calc(100vh-160px)] flex flex-col sticky top-20 shadow-2xl">
-          <div className="px-5 py-4 border-b border-white/10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
-                <h3 className="text-sm font-semibold text-white">
-                  Chapters
-                </h3>
-              </div>
-              <span className="text-xs text-gray-500 font-mono">
-                {currentChapterIndex + 1}/{totalChapters}
-              </span>
-            </div>
-            {/* Chapter navigation buttons */}
-            <div className="flex items-center gap-2 mt-3">
-              <button
-                onClick={goToPreviousChapter}
-                disabled={currentChapterIndex <= 0}
-                className="flex-1 py-1.5 text-xs font-medium rounded-lg bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                Prev
-              </button>
-              <button
-                onClick={goToNextChapter}
-                disabled={currentChapterIndex >= totalChapters - 1}
-                className="flex-1 py-1.5 text-xs font-medium rounded-lg bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1"
-              >
-                Next
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-            <p className="text-[10px] text-gray-600 mt-2 text-center">Use [ ] or arrow keys to navigate</p>
-          </div>
-          <div className="overflow-y-auto p-3 space-y-2 flex-1">
-            {progress.topics?.map((topic, idx) => {
-              const isActive = currentTopic?.timestamp === topic.timestamp;
-              return (
-                <button
-                  key={idx}
-                  onClick={() => seekToTime(topic.timestamp)}
-                  className={`w-full text-left px-3 py-3 rounded-xl transition-all ${
-                    isActive
-                      ? 'bg-white/20 border border-white/30'
-                      : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className={`text-[11px] font-mono min-w-[55px] mt-0.5 ${isActive ? 'text-white font-semibold' : 'text-gray-500'}`}>
-                      {formatTime(topic.timestamp)}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className={`text-xs leading-snug ${isActive ? 'text-white font-semibold' : 'text-gray-400 font-medium'}`}>
-                        {topic.title}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Center - Video Player */}
-        <div className="flex flex-col gap-4 sticky top-20">
+        {/* Left - Video Player */}
+        <div className="flex flex-col gap-4 self-center">
           <div className="bg-black overflow-hidden border border-white/10 rounded-2xl shadow-2xl">
             <div id="youtube-player" className="w-full aspect-video" />
           </div>
@@ -505,6 +437,25 @@ export default function PodcastSummarizer() {
                     Transcript
                   </div>
                   {selectedPanel === 'transcript' && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setSelectedPanel('chapters')}
+                  className={`px-6 py-4 text-sm font-semibold tracking-wide transition-all relative ${
+                    selectedPanel === 'chapters'
+                      ? 'text-white'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                    Chapters
+                    <span className="text-xs text-gray-500 font-mono">({currentChapterIndex + 1}/{totalChapters})</span>
+                  </div>
+                  {selectedPanel === 'chapters' && (
                     <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
                   )}
                 </button>
@@ -577,6 +528,30 @@ export default function PodcastSummarizer() {
                       {autoScroll ? 'Auto-scroll' : 'Manual'}
                     </button>
                   </>
+                )}
+                {selectedPanel === 'chapters' && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={goToPreviousChapter}
+                      disabled={currentChapterIndex <= 0}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-1"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      Prev
+                    </button>
+                    <button
+                      onClick={goToNextChapter}
+                      disabled={currentChapterIndex >= totalChapters - 1}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-1"
+                    >
+                      Next
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -672,6 +647,67 @@ export default function PodcastSummarizer() {
                       No matches found for "{searchQuery}"
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Chapters Tab */}
+              <div className={selectedPanel === 'chapters' ? 'block' : 'hidden'}>
+                <p className="text-[10px] text-gray-600 mb-4 text-center">Use [ ] or arrow keys to navigate chapters</p>
+                <div className="space-y-4">
+                  {progress.topics?.map((topic, idx) => {
+                    const isActive = currentTopic?.timestamp === topic.timestamp;
+                    return (
+                      <div
+                        key={idx}
+                        className={`rounded-xl transition-all ${
+                          isActive
+                            ? 'bg-white/10 border border-white/20'
+                            : 'bg-white/5 border border-transparent'
+                        }`}
+                      >
+                        {/* Clickable header */}
+                        <button
+                          onClick={() => seekToTime(topic.timestamp)}
+                          className="w-full text-left px-5 py-4 hover:bg-white/5 rounded-t-xl transition-all"
+                        >
+                          <div className="flex items-center gap-4">
+                            <span className={`text-xs font-mono min-w-[65px] ${isActive ? 'text-white font-semibold' : 'text-gray-500'}`}>
+                              {formatTime(topic.timestamp)}
+                            </span>
+                            <div className={`text-base font-semibold ${isActive ? 'text-white' : 'text-gray-200'}`}>
+                              {topic.title}
+                            </div>
+                            <svg className="w-4 h-4 text-gray-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                        </button>
+
+                        {/* Summary content */}
+                        <div className="px-5 pb-4">
+                          <p className="text-sm text-gray-300 leading-relaxed mb-3">
+                            {topic.summary || topic.description}
+                          </p>
+
+                          {/* Key points */}
+                          {topic.keyPoints && topic.keyPoints.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-white/10">
+                              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Key Points</h4>
+                              <ul className="space-y-1.5">
+                                {topic.keyPoints.map((point, pointIdx) => (
+                                  <li key={pointIdx} className="flex items-start gap-2 text-sm text-gray-400">
+                                    <span className="text-white/50 mt-1">•</span>
+                                    <span>{point}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

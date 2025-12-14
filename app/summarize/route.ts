@@ -325,16 +325,19 @@ async function summarizeWithVertexAI(
     throw new Error('GCP_PROJECT_ID environment variable is not set');
   }
 
-  // Get credentials from Secret Manager
-  const credentials = await getServiceAccountFromSecretManager();
-
-  const vertexAI = new VertexAI({
+  // For local development, use Application Default Credentials (gcloud auth application-default login)
+  // For production with Secret Manager, set USE_SECRET_MANAGER=true
+  let vertexAIOptions: { project: string; location: string; googleAuthOptions?: { credentials: any } } = {
     project: projectId,
     location,
-    googleAuthOptions: {
-      credentials
-    }
-  });
+  };
+
+  if (process.env.USE_SECRET_MANAGER === 'true') {
+    const credentials = await getServiceAccountFromSecretManager();
+    vertexAIOptions.googleAuthOptions = { credentials };
+  }
+
+  const vertexAI = new VertexAI(vertexAIOptions);
 
   const model = vertexAI.getGenerativeModel({
     model: 'gemini-2.0-flash-exp',
@@ -363,15 +366,28 @@ async function summarizeWithVertexAI(
 
 4. **Notable Quotes** (${summaryDepth.quotes} quotes): Memorable quotes with context.
 
-5. **Chapter Bookmarks** (${summaryDepth.chapters} chapters): Break the podcast into major topic segments. For each chapter, provide:
+5. **Chapter Summaries** (${summaryDepth.chapters} chapters): Break the podcast into major topic segments. For each chapter, provide:
    - A catchy, descriptive title (3-6 words)
    - Approximate timestamp (HH:MM:SS format, estimate based on content flow)
-   - 1-sentence description
+   - A detailed 2-4 sentence summary of what's discussed in this section
+   - 2-4 key points or takeaways from this chapter as bullet points
 
 Format chapters as:
-## Chapter Bookmarks
-- **[00:05:30] Introduction & Background** - Overview of today's topic and guest introduction
-- **[00:15:45] Deep Dive into AI** - Discussion about artificial intelligence impacts
+## Chapter Summaries
+
+### [00:05:30] Introduction & Background
+Overview of today's topic and guest introduction. The host welcomes the guest and discusses their background in the field.
+
+**Key Points:**
+- Point one about this section
+- Point two about this section
+
+### [00:15:45] Deep Dive into AI
+Discussion about artificial intelligence impacts on society and business. The conversation explores both opportunities and risks.
+
+**Key Points:**
+- Key insight from this discussion
+- Another important takeaway
 
 Format your response in clean markdown.
 
@@ -387,30 +403,73 @@ ${transcript.slice(0, 100000)} ${transcript.length > 100000 ? '\n\n[Transcript t
   return { summary: summaryText, topics };
 }
 
-// Extract topic bookmarks from AI summary and match to timestamps
+// Extract chapter summaries from AI summary
 function extractTopicsFromSummary(
   summary: string,
   timestampedTranscript: Array<{ timestamp: number; text: string; time: string }>
-): Array<{ title: string; timestamp: number; description: string }> {
-  const topics: Array<{ title: string; timestamp: number; description: string }> = [];
+): Array<{ title: string; timestamp: number; description: string; summary: string; keyPoints: string[] }> {
+  const topics: Array<{ title: string; timestamp: number; description: string; summary: string; keyPoints: string[] }> = [];
 
-  // Match chapter bookmark format: - **[HH:MM:SS] Title** - Description
-  const chapterRegex = /[-*]\s*\*\*\[(\d{2}:\d{2}:\d{2})\]\s*([^\*]+)\*\*\s*[-–]\s*(.+?)(?=\n|$)/g;
+  // Match chapter summary format: ### [HH:MM:SS] Title
+  // Followed by summary paragraph and **Key Points:** section
+  const chapterSectionRegex = /###\s*\[(\d{2}:\d{2}:\d{2})\]\s*([^\n]+)\n([\s\S]*?)(?=###\s*\[|$)/g;
 
   let match;
-  while ((match = chapterRegex.exec(summary)) !== null) {
+  while ((match = chapterSectionRegex.exec(summary)) !== null) {
     const timeStr = match[1];
     const title = match[2].trim();
-    const description = match[3].trim();
+    const content = match[3].trim();
 
     // Convert time string to seconds
     const [hours, minutes, seconds] = timeStr.split(':').map(Number);
     const timestamp = hours * 3600 + minutes * 60 + seconds;
 
-    topics.push({ title, timestamp, description });
+    // Extract summary (text before **Key Points:**)
+    const keyPointsIndex = content.indexOf('**Key Points:**');
+    let chapterSummary = '';
+    let keyPoints: string[] = [];
+
+    if (keyPointsIndex !== -1) {
+      chapterSummary = content.substring(0, keyPointsIndex).trim();
+      const keyPointsSection = content.substring(keyPointsIndex + 15); // After "**Key Points:**"
+      // Extract bullet points
+      const bulletMatches = keyPointsSection.match(/[-•]\s*(.+?)(?=\n[-•]|\n\n|$)/g);
+      if (bulletMatches) {
+        keyPoints = bulletMatches.map(b => b.replace(/^[-•]\s*/, '').trim());
+      }
+    } else {
+      chapterSummary = content;
+    }
+
+    // Use first sentence as description
+    const firstSentence = chapterSummary.split(/[.!?]/)[0]?.trim() || chapterSummary.substring(0, 100);
+
+    topics.push({
+      title,
+      timestamp,
+      description: firstSentence,
+      summary: chapterSummary,
+      keyPoints
+    });
   }
 
-  // If no chapters found in summary, create basic sections based on transcript length
+  // Fallback: try old format if new format didn't match
+  if (topics.length === 0) {
+    const oldChapterRegex = /[-*]\s*\*\*\[(\d{2}:\d{2}:\d{2})\]\s*([^\*]+)\*\*\s*[-–]\s*(.+?)(?=\n|$)/g;
+
+    while ((match = oldChapterRegex.exec(summary)) !== null) {
+      const timeStr = match[1];
+      const title = match[2].trim();
+      const description = match[3].trim();
+
+      const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+      const timestamp = hours * 3600 + minutes * 60 + seconds;
+
+      topics.push({ title, timestamp, description, summary: description, keyPoints: [] });
+    }
+  }
+
+  // If still no chapters found, create basic sections based on transcript length
   if (topics.length === 0) {
     const duration = timestampedTranscript[timestampedTranscript.length - 1]?.timestamp || 0;
     const numSections = Math.min(Math.max(3, Math.floor(duration / 600)), 10); // 1 section per 10 min, max 10
@@ -420,7 +479,9 @@ function extractTopicsFromSummary(
       topics.push({
         title: `Section ${i + 1}`,
         timestamp,
-        description: 'Topic section'
+        description: 'Topic section',
+        summary: 'Topic section',
+        keyPoints: []
       });
     }
   }
