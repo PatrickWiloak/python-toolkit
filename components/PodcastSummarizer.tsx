@@ -33,6 +33,8 @@ export default function PodcastSummarizer() {
   const [currentTime, setCurrentTime] = useState(0);
   const [selectedPanel, setSelectedPanel] = useState<'summary' | 'transcript'>('summary');
   const [autoScroll, setAutoScroll] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [copiedState, setCopiedState] = useState<'summary' | 'transcript' | null>(null);
   const playerRef = useRef<any>(null);
   const transcriptRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
 
@@ -122,6 +124,89 @@ export default function PodcastSummarizer() {
     }
     return progress.topics[0] || null;
   };
+
+  const copyToClipboard = async (text: string, type: 'summary' | 'transcript') => {
+    await navigator.clipboard.writeText(text);
+    setCopiedState(type);
+    setTimeout(() => setCopiedState(null), 2000);
+  };
+
+  const downloadAsMarkdown = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const getPlainTranscript = (): string => {
+    if (!progress?.timestampedTranscript) return '';
+    return progress.timestampedTranscript
+      .map(seg => `[${seg.time}] ${seg.text}`)
+      .join('\n');
+  };
+
+  // Filter transcript segments based on search query
+  const filteredTranscript = progress?.timestampedTranscript?.filter((segment, idx, arr) => {
+    // First deduplicate
+    const isUnique = idx === arr.findIndex(s => s.timestamp === segment.timestamp && s.text === segment.text);
+    if (!isUnique) return false;
+    // Then filter by search
+    if (!searchQuery) return true;
+    return segment.text.toLowerCase().includes(searchQuery.toLowerCase());
+  }) || [];
+
+  const searchMatchCount = searchQuery ? filteredTranscript.length : 0;
+
+  // Get current chapter index
+  const getCurrentChapterIndex = (): number => {
+    if (!progress?.topics) return 0;
+    for (let i = progress.topics.length - 1; i >= 0; i--) {
+      if (currentTime >= progress.topics[i].timestamp) {
+        return i;
+      }
+    }
+    return 0;
+  };
+
+  const currentChapterIndex = getCurrentChapterIndex();
+  const totalChapters = progress?.topics?.length || 0;
+
+  // Navigate to previous/next chapter
+  const goToPreviousChapter = () => {
+    if (!progress?.topics || currentChapterIndex <= 0) return;
+    seekToTime(progress.topics[currentChapterIndex - 1].timestamp);
+  };
+
+  const goToNextChapter = () => {
+    if (!progress?.topics || currentChapterIndex >= progress.topics.length - 1) return;
+    seekToTime(progress.topics[currentChapterIndex + 1].timestamp);
+  };
+
+  // Keyboard navigation for chapters
+  useEffect(() => {
+    if (!progress?.summary) return; // Only active when viewing results
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.key === 'ArrowLeft' || e.key === '[') {
+        e.preventDefault();
+        goToPreviousChapter();
+      } else if (e.key === 'ArrowRight' || e.key === ']') {
+        e.preventDefault();
+        goToNextChapter();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [progress?.summary, currentChapterIndex, progress?.topics]);
 
   // Auto-scroll to current transcript segment
   useEffect(() => {
@@ -287,14 +372,43 @@ export default function PodcastSummarizer() {
         {/* Left - Chapters Sidebar */}
         <div className="bg-black border border-white/10 rounded-2xl overflow-hidden max-h-[calc(100vh-160px)] flex flex-col sticky top-20 shadow-2xl">
           <div className="px-5 py-4 border-b border-white/10">
-            <div className="flex items-center gap-2">
-              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-              <h3 className="text-sm font-semibold text-white">
-                Chapters
-              </h3>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                <h3 className="text-sm font-semibold text-white">
+                  Chapters
+                </h3>
+              </div>
+              <span className="text-xs text-gray-500 font-mono">
+                {currentChapterIndex + 1}/{totalChapters}
+              </span>
             </div>
+            {/* Chapter navigation buttons */}
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={goToPreviousChapter}
+                disabled={currentChapterIndex <= 0}
+                className="flex-1 py-1.5 text-xs font-medium rounded-lg bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Prev
+              </button>
+              <button
+                onClick={goToNextChapter}
+                disabled={currentChapterIndex >= totalChapters - 1}
+                className="flex-1 py-1.5 text-xs font-medium rounded-lg bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1"
+              >
+                Next
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-600 mt-2 text-center">Use [ ] or arrow keys to navigate</p>
           </div>
           <div className="overflow-y-auto p-3 space-y-2 flex-1">
             {progress.topics?.map((topic, idx) => {
@@ -395,18 +509,76 @@ export default function PodcastSummarizer() {
                   )}
                 </button>
               </div>
-              {selectedPanel === 'transcript' && (
-                <button
-                  onClick={() => setAutoScroll(!autoScroll)}
-                  className={`mr-4 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                    autoScroll
-                      ? 'bg-white text-black'
-                      : 'bg-white/10 text-gray-400 hover:bg-white/20'
-                  }`}
-                >
-                  {autoScroll ? 'Auto-scroll' : 'Manual'}
-                </button>
-              )}
+              <div className="flex items-center gap-2 mr-4">
+                {/* Export buttons */}
+                {selectedPanel === 'summary' && progress?.summary && (
+                  <>
+                    <button
+                      onClick={() => copyToClipboard(progress.summary!, 'summary')}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white transition-all flex items-center gap-1.5"
+                    >
+                      {copiedState === 'summary' ? (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                          Copy
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => downloadAsMarkdown(progress.summary!, 'podcast-summary.md')}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white transition-all flex items-center gap-1.5"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Download
+                    </button>
+                  </>
+                )}
+                {selectedPanel === 'transcript' && (
+                  <>
+                    <button
+                      onClick={() => copyToClipboard(getPlainTranscript(), 'transcript')}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white transition-all flex items-center gap-1.5"
+                    >
+                      {copiedState === 'transcript' ? (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                          Copy
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setAutoScroll(!autoScroll)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                        autoScroll
+                          ? 'bg-white text-black'
+                          : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                      }`}
+                    >
+                      {autoScroll ? 'Auto-scroll' : 'Manual'}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Tab Content */}
@@ -429,11 +601,50 @@ export default function PodcastSummarizer() {
 
               {/* Transcript Tab */}
               <div className={selectedPanel === 'transcript' ? 'block' : 'hidden'}>
+                {/* Search Input */}
+                <div className="mb-4">
+                  <div className="relative">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search transcript..."
+                      className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-600 text-sm focus:outline-none focus:border-white/30 transition-all"
+                    />
+                    {searchQuery && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                        <span className="text-xs text-gray-500">{searchMatchCount} matches</span>
+                        <button
+                          onClick={() => setSearchQuery('')}
+                          className="text-gray-500 hover:text-white transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="space-y-0">
-                  {progress.timestampedTranscript?.filter((segment, idx, arr) => {
-                    return idx === arr.findIndex(s => s.timestamp === segment.timestamp && s.text === segment.text);
-                  }).map((segment, idx) => {
+                  {filteredTranscript.map((segment, idx) => {
                     const isActive = Math.abs(currentTime - segment.timestamp) < 3;
+
+                    // Highlight search matches
+                    const highlightText = (text: string) => {
+                      if (!searchQuery) return text;
+                      const parts = text.split(new RegExp(`(${searchQuery})`, 'gi'));
+                      return parts.map((part, i) =>
+                        part.toLowerCase() === searchQuery.toLowerCase()
+                          ? <mark key={i} className="bg-yellow-500/30 text-white rounded px-0.5">{part}</mark>
+                          : part
+                      );
+                    };
+
                     return (
                       <div
                         key={`${segment.timestamp}-${idx}`}
@@ -450,12 +661,17 @@ export default function PodcastSummarizer() {
                             {segment.time}
                           </span>
                           <p className={`text-sm leading-relaxed flex-1 transition-colors ${isActive ? 'text-white font-medium' : 'text-gray-400'}`}>
-                            {segment.text}
+                            {highlightText(segment.text)}
                           </p>
                         </div>
                       </div>
                     );
                   })}
+                  {searchQuery && filteredTranscript.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      No matches found for "{searchQuery}"
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

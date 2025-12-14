@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 type DownloadFormat = 'video' | 'audio';
 type Platform = 'YouTube' | 'Instagram' | 'TikTok' | 'Twitter' | 'LinkedIn' | 'Unknown';
@@ -14,6 +14,8 @@ interface DownloadProgress {
   videoTotal?: number;
 }
 
+const DEFAULT_OUTPUT_DIR = '/home/patwiloak/Downloads';
+
 export default function MediaDownloader() {
   const [url, setUrl] = useState('');
   const [format, setFormat] = useState<DownloadFormat>('video');
@@ -24,6 +26,22 @@ export default function MediaDownloader() {
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [currentStep, setCurrentStep] = useState<DownloadStep>('idle');
+  const [outputDir, setOutputDir] = useState(DEFAULT_OUTPUT_DIR);
+  const [showSettings, setShowSettings] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Load saved output directory from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('mediaDownloader_outputDir');
+    if (saved) setOutputDir(saved);
+  }, []);
+
+  // Save output directory to localStorage
+  useEffect(() => {
+    if (outputDir !== DEFAULT_OUTPUT_DIR) {
+      localStorage.setItem('mediaDownloader_outputDir', outputDir);
+    }
+  }, [outputDir]);
 
   useEffect(() => {
     if (!url) {
@@ -82,9 +100,11 @@ export default function MediaDownloader() {
         format,
         quality,
         audioFormat,
-        outputDir: '/home/patwiloak/Downloads',
+        outputDir,
       })}`
     );
+
+    eventSourceRef.current = eventSource;
 
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -92,19 +112,35 @@ export default function MediaDownloader() {
 
       if (data.status === 'completed' || data.status === 'error') {
         eventSource.close();
-        setTimeout(() => {
-          setDownloading(false);
-          setCurrentStep('idle');
-        }, 5000);
+        eventSourceRef.current = null;
+        // Don't auto-reset - let user control when to start another download
       }
     };
 
     eventSource.onerror = () => {
       eventSource.close();
+      eventSourceRef.current = null;
       setDownloading(false);
       setCurrentStep('error');
       setProgress({ status: 'Connection error occurred', progress: 0, details: '' });
     };
+  };
+
+  const handleCancel = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    setDownloading(false);
+    setCurrentStep('idle');
+    setProgress(null);
+  };
+
+  const handleReset = () => {
+    setUrl('');
+    setDownloading(false);
+    setCurrentStep('idle');
+    setProgress(null);
   };
 
 
@@ -137,6 +173,7 @@ export default function MediaDownloader() {
               type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !downloading && url && handleDownload()}
               placeholder="Paste your media URL here..."
               className="w-full px-6 py-4 text-lg bg-white/5 backdrop-blur border border-white/10 rounded-lg text-white placeholder-gray-600 focus:outline-none focus:border-white/30 transition-all"
               disabled={downloading}
@@ -150,6 +187,43 @@ export default function MediaDownloader() {
               </div>
             )}
           </div>
+
+          {/* Settings Toggle */}
+          <div className="flex items-center justify-between mt-4">
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Settings
+              <svg className={`w-3 h-3 transition-transform ${showSettings ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <span className="text-xs text-gray-600 truncate max-w-[300px]" title={outputDir}>
+              Saving to: {outputDir}
+            </span>
+          </div>
+
+          {/* Settings Panel */}
+          {showSettings && (
+            <div className="mt-4 p-4 bg-white/5 border border-white/10 rounded-lg">
+              <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wide">
+                Download Directory
+              </label>
+              <input
+                type="text"
+                value={outputDir}
+                onChange={(e) => setOutputDir(e.target.value)}
+                placeholder="/path/to/downloads"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-600 focus:outline-none focus:border-white/30 transition-all text-sm"
+                disabled={downloading}
+              />
+            </div>
+          )}
         </div>
 
         <div className="p-8">
@@ -309,12 +383,28 @@ export default function MediaDownloader() {
                 </div>
               )}
 
+              {/* Cancel Button - show during active download */}
+              {currentStep !== 'completed' && currentStep !== 'error' && (
+                <button
+                  onClick={handleCancel}
+                  className="w-full py-3 rounded-lg font-medium text-sm bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10 hover:text-white transition-all"
+                >
+                  Cancel Download
+                </button>
+              )}
+
               {/* Completion Message */}
               {currentStep === 'completed' && (
                 <div className="p-6 bg-white/5 border border-white/10 rounded-lg text-center">
                   <div className="text-3xl mb-2">✓</div>
                   <div className="text-lg font-medium text-white mb-1">Download Complete</div>
-                  <div className="text-sm text-gray-400">Your files are ready</div>
+                  <div className="text-sm text-gray-400 mb-4">Your files are ready in {outputDir}</div>
+                  <button
+                    onClick={handleReset}
+                    className="px-6 py-3 bg-white text-black hover:bg-gray-200 rounded-lg font-medium text-sm transition-all"
+                  >
+                    Download Another
+                  </button>
                 </div>
               )}
 
@@ -323,7 +413,13 @@ export default function MediaDownloader() {
                 <div className="p-6 bg-white/5 border border-white/10 rounded-lg text-center">
                   <div className="text-3xl mb-2">✗</div>
                   <div className="text-lg font-medium text-white mb-1">Download Failed</div>
-                  <div className="text-sm text-gray-400">Please try again</div>
+                  <div className="text-sm text-gray-400 mb-4">{progress?.details || 'Please try again'}</div>
+                  <button
+                    onClick={handleReset}
+                    className="px-6 py-3 bg-white text-black hover:bg-gray-200 rounded-lg font-medium text-sm transition-all"
+                  >
+                    Try Again
+                  </button>
                 </div>
               )}
             </div>
