@@ -358,36 +358,54 @@ async function summarizeWithVertexAI(
 
   const prompt = `You are a podcast summarization expert. Analyze this ${estimatedMinutes}-minute podcast transcript and provide:
 
-1. **Main Summary** (${summaryDepth.paragraphs}): Detailed overview of the episode.
+## Overview Section (High-Level)
+1. **Episode Overview** (1-2 sentences): What is this episode about? Who is the guest (if any)?
 
-2. **Key Topics** (${summaryDepth.topics} bullet points): Main themes with 1-2 sentences each.
+2. **The Big Picture** (1 paragraph): The main thesis or central argument of the episode.
 
-3. **Key Takeaways** (${summaryDepth.takeaways} bullet points): Actionable insights with context.
+3. **Key Takeaways** (3-5 bullet points): The most important insights someone should remember.
 
-4. **Notable Quotes** (${summaryDepth.quotes} quotes): Memorable quotes with context.
+## Chapter Summaries Section (Detailed)
+Break the podcast into ${summaryDepth.chapters} major topic segments. For each chapter, provide:
+- A catchy, descriptive title (3-6 words)
+- Approximate timestamp (HH:MM:SS format, estimate based on content flow)
+- A comprehensive 4-6 sentence summary covering the main points discussed
+- 4-6 key insights, arguments, or facts from this section
+- Notable quotes if any stand out (optional)
 
-5. **Chapter Summaries** (${summaryDepth.chapters} chapters): Break the podcast into major topic segments. For each chapter, provide:
-   - A catchy, descriptive title (3-6 words)
-   - Approximate timestamp (HH:MM:SS format, estimate based on content flow)
-   - A detailed 2-4 sentence summary of what's discussed in this section
-   - 2-4 key points or takeaways from this chapter as bullet points
+Format the Overview as:
+## Overview
+**Episode Overview:** Brief one-liner about the episode.
+
+**The Big Picture:** Main thesis paragraph here.
+
+**Key Takeaways:**
+- Takeaway 1
+- Takeaway 2
+- Takeaway 3
 
 Format chapters as:
 ## Chapter Summaries
 
 ### [00:05:30] Introduction & Background
-Overview of today's topic and guest introduction. The host welcomes the guest and discusses their background in the field.
+The host opens by introducing the guest and their impressive background in artificial intelligence research. They discuss how the guest became interested in AI and what drove them to focus on safety concerns. The conversation touches on recent developments in the field and sets up the main topics they'll explore. The guest shares their perspective on where AI is heading and why this conversation matters now more than ever.
 
-**Key Points:**
-- Point one about this section
-- Point two about this section
+**Key Insights:**
+- Insight one with specific detail or example
+- Insight two explaining an important concept
+- Insight three about implications or applications
+- Insight four with actionable information
 
-### [00:15:45] Deep Dive into AI
-Discussion about artificial intelligence impacts on society and business. The conversation explores both opportunities and risks.
+**Notable Quote:** "Quote from the guest if particularly memorable"
 
-**Key Points:**
-- Key insight from this discussion
-- Another important takeaway
+### [00:15:45] Deep Dive into AI Safety
+Detailed discussion about the specific risks and challenges in AI development. They explore both near-term concerns and longer-term existential risks, with the guest providing concrete examples from their research.
+
+**Key Insights:**
+- Specific insight with supporting detail
+- Another key point discussed in depth
+- Practical implications for industry
+- Connection to broader societal impact
 
 Format your response in clean markdown.
 
@@ -424,18 +442,21 @@ function extractTopicsFromSummary(
     const [hours, minutes, seconds] = timeStr.split(':').map(Number);
     const timestamp = hours * 3600 + minutes * 60 + seconds;
 
-    // Extract summary (text before **Key Points:**)
-    const keyPointsIndex = content.indexOf('**Key Points:**');
+    // Extract summary (text before **Key Insights:** or **Key Points:**)
+    let keyPointsIndex = content.indexOf('**Key Insights:**');
+    if (keyPointsIndex === -1) {
+      keyPointsIndex = content.indexOf('**Key Points:**');
+    }
     let chapterSummary = '';
     let keyPoints: string[] = [];
 
     if (keyPointsIndex !== -1) {
       chapterSummary = content.substring(0, keyPointsIndex).trim();
-      const keyPointsSection = content.substring(keyPointsIndex + 15); // After "**Key Points:**"
-      // Extract bullet points
-      const bulletMatches = keyPointsSection.match(/[-•]\s*(.+?)(?=\n[-•]|\n\n|$)/g);
+      const keyPointsSection = content.substring(keyPointsIndex);
+      // Extract bullet points (skip the header line)
+      const bulletMatches = keyPointsSection.match(/[-•]\s*(.+?)(?=\n[-•]|\n\*\*|\n\n|$)/g);
       if (bulletMatches) {
-        keyPoints = bulletMatches.map(b => b.replace(/^[-•]\s*/, '').trim());
+        keyPoints = bulletMatches.map(b => b.replace(/^[-•]\s*/, '').trim()).filter(p => p.length > 0);
       }
     } else {
       chapterSummary = content;

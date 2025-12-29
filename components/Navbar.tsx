@@ -20,7 +20,7 @@ export default function Navbar() {
           {/* Logo */}
           <div className="flex items-center space-x-3">
             <a href="/" className="text-xl font-light tracking-tight text-white hover:text-gray-300 transition-colors">
-              Media Toolkit
+              Pat's Media Toolkit
             </a>
           </div>
 

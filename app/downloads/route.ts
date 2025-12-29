@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,8 +38,21 @@ export async function GET(request: NextRequest) {
       // Detect playlist
       const isPlaylist = url.includes('list=') || url.includes('playlist');
 
-      // Build yt-dlp command - use full path
-      const cmd = '/home/patwiloak/coding/toolkit-python/venv/bin/yt-dlp';
+      // Build yt-dlp command - use dynamic path resolution
+      const projectRoot = path.resolve(process.cwd());
+      const cmd = path.join(projectRoot, 'venv', 'bin', 'yt-dlp');
+
+      // Verify yt-dlp exists
+      if (!fs.existsSync(cmd)) {
+        sendEvent({
+          status: 'error',
+          progress: 0,
+          details: 'yt-dlp not found. Please run: python3 -m venv venv && source venv/bin/activate && pip install yt-dlp',
+        });
+        isClosed = true;
+        try { controller.close(); } catch (err) {}
+        return;
+      }
       const args: string[] = [];
 
       // Output path
@@ -75,14 +89,14 @@ export async function GET(request: NextRequest) {
       sendEvent({ status: 'Starting download...', progress: 0, details: 'Initializing...' });
 
       // Spawn yt-dlp process
-      const process = spawn(cmd, args);
+      const ytdlpProcess = spawn(cmd, args);
 
       let currentPercentage = 0;
       let playlistIndex = 0;
       let playlistTotal = 0;
       let currentTitle = '';
 
-      process.stdout.on('data', (data) => {
+      ytdlpProcess.stdout.on('data', (data) => {
         const lines = data.toString().split('\n');
 
         for (const line of lines) {
@@ -167,11 +181,11 @@ export async function GET(request: NextRequest) {
         }
       });
 
-      process.stderr.on('data', (data) => {
+      ytdlpProcess.stderr.on('data', (data) => {
         console.error('yt-dlp error:', data.toString());
       });
 
-      process.on('close', (code) => {
+      ytdlpProcess.on('close', (code) => {
         if (code === 0) {
           sendEvent({
             status: 'completed',
@@ -193,7 +207,7 @@ export async function GET(request: NextRequest) {
         }
       });
 
-      process.on('error', (error) => {
+      ytdlpProcess.on('error', (error) => {
         sendEvent({
           status: 'error',
           progress: 0,

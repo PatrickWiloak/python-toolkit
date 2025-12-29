@@ -33,7 +33,7 @@ export default function PodcastSummarizer() {
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState<SummaryProgress | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
-  const [selectedPanel, setSelectedPanel] = useState<'summary' | 'transcript' | 'chapters'>('summary');
+  const [selectedPanel, setSelectedPanel] = useState<'summary' | 'transcript' | 'chapters'>('chapters');
   const [autoScroll, setAutoScroll] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedState, setCopiedState] = useState<'summary' | 'transcript' | null>(null);
@@ -405,6 +405,25 @@ export default function PodcastSummarizer() {
             <div className="flex items-center justify-between border-b border-white/10">
               <div className="flex">
                 <button
+                  onClick={() => setSelectedPanel('chapters')}
+                  className={`px-6 py-4 text-sm font-semibold tracking-wide transition-all relative ${
+                    selectedPanel === 'chapters'
+                      ? 'text-white'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                    Chapters
+                    <span className="text-xs text-gray-500 font-mono">({currentChapterIndex + 1}/{totalChapters})</span>
+                  </div>
+                  {selectedPanel === 'chapters' && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
+                  )}
+                </button>
+                <button
                   onClick={() => setSelectedPanel('summary')}
                   className={`px-6 py-4 text-sm font-semibold tracking-wide transition-all relative ${
                     selectedPanel === 'summary'
@@ -416,7 +435,7 @@ export default function PodcastSummarizer() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    Summary
+                    Overview
                   </div>
                   {selectedPanel === 'summary' && (
                     <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
@@ -440,28 +459,33 @@ export default function PodcastSummarizer() {
                     <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
                   )}
                 </button>
-                <button
-                  onClick={() => setSelectedPanel('chapters')}
-                  className={`px-6 py-4 text-sm font-semibold tracking-wide transition-all relative ${
-                    selectedPanel === 'chapters'
-                      ? 'text-white'
-                      : 'text-gray-500 hover:text-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                    </svg>
-                    Chapters
-                    <span className="text-xs text-gray-500 font-mono">({currentChapterIndex + 1}/{totalChapters})</span>
-                  </div>
-                  {selectedPanel === 'chapters' && (
-                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
-                  )}
-                </button>
               </div>
               <div className="flex items-center gap-2 mr-4">
                 {/* Export buttons */}
+                {selectedPanel === 'chapters' && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={goToPreviousChapter}
+                      disabled={currentChapterIndex <= 0}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-1"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      Prev
+                    </button>
+                    <button
+                      onClick={goToNextChapter}
+                      disabled={currentChapterIndex >= totalChapters - 1}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-1"
+                    >
+                      Next
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
                 {selectedPanel === 'summary' && progress?.summary && (
                   <>
                     <button
@@ -528,30 +552,6 @@ export default function PodcastSummarizer() {
                       {autoScroll ? 'Auto-scroll' : 'Manual'}
                     </button>
                   </>
-                )}
-                {selectedPanel === 'chapters' && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={goToPreviousChapter}
-                      disabled={currentChapterIndex <= 0}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-1"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                      Prev
-                    </button>
-                    <button
-                      onClick={goToNextChapter}
-                      disabled={currentChapterIndex >= totalChapters - 1}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-1"
-                    >
-                      Next
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                  </div>
                 )}
               </div>
             </div>
